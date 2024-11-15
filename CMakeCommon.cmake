@@ -160,7 +160,7 @@ function (add_addon target)
 
         # Configure the Info.plist file
         configure_file(
-            "${CMAKE_TOOLS_DIR}/AddOnInfo.plist.in"
+            "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/AddOnInfo.plist.in"
             "${CMAKE_BINARY_DIR}/AddOnInfo.plist"
             @ONLY
         )
@@ -284,7 +284,7 @@ function (target_addon_resources target)
             DEPENDS ${AddOnResourceFiles} ${AddOnImageFiles}
             COMMENT "Compiling resources..."
             COMMAND ${CMAKE_COMMAND} -E make_directory "${ResourceObjectsDir}"
-            COMMAND ${Python_EXECUTABLE} "${CMAKE_TOOLS_DIR}/CompileResources.py" "${arg_LANGUAGE_CODE}" "${det_kit_dir}" "${arg_SOURCES_ROOT_DIR}" "${arg_RESOURCE_ROOT_DIR}" "${ResourceObjectsDir}" "${ResourceObjectsDir}/${output_name}.res"
+            COMMAND ${Python_EXECUTABLE} "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/CompileResources.py" "${arg_LANGUAGE_CODE}" "${det_kit_dir}" "${arg_SOURCES_ROOT_DIR}" "${arg_RESOURCE_ROOT_DIR}" "${ResourceObjectsDir}" "${ResourceObjectsDir}/${output_name}.res"
             COMMAND ${CMAKE_COMMAND} -E touch ${ResourceStampFile}
         )
     else ()
@@ -293,7 +293,7 @@ function (target_addon_resources target)
             DEPENDS ${AddOnResourceFiles} ${AddOnImageFiles}
             COMMENT "Compiling resources..."
             COMMAND ${CMAKE_COMMAND} -E make_directory "${ResourceObjectsDir}"
-            COMMAND ${Python_EXECUTABLE} "${CMAKE_TOOLS_DIR}/CompileResources.py" "${arg_LANGUAGE_CODE}" "${det_kit_dir}" "${arg_SOURCES_ROOT_DIR}" "${arg_RESOURCE_ROOT_DIR}" "${ResourceObjectsDir}" "${CMAKE_BINARY_DIR}/$<CONFIG>/${output_name}.bundle/Contents/Resources"
+            COMMAND ${Python_EXECUTABLE} "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/CompileResources.py" "${arg_LANGUAGE_CODE}" "${det_kit_dir}" "${arg_SOURCES_ROOT_DIR}" "${arg_RESOURCE_ROOT_DIR}" "${ResourceObjectsDir}" "${CMAKE_BINARY_DIR}/$<CONFIG>/${output_name}.bundle/Contents/Resources"
             COMMAND ${CMAKE_COMMAND} -E copy "${det_kit_dir}/Inc/PkgInfo" "${CMAKE_BINARY_DIR}/$<CONFIG>/${output_name}.bundle/Contents/PkgInfo"
             COMMAND ${CMAKE_COMMAND} -E touch ${ResourceStampFile}
         )
