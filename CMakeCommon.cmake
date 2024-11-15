@@ -1,3 +1,7 @@
+if (CMAKE_VERSION VERSION_LESS "3.20.0")
+    message (FATAL_ERROR "This script now requires CMake 3.20.0 or newer")
+endif ()
+
 function (SetGlobalCompilerDefinitions acVersion)
 
     if (WIN32)
@@ -6,7 +10,7 @@ function (SetGlobalCompilerDefinitions acVersion)
     else ()
         add_definitions (-Dmacintosh=1)
         if (${acVersion} GREATER_EQUAL 26)
-            set (CMAKE_OSX_ARCHITECTURES "x86_64;arm64" PARENT_SCOPE CACHE STRING "" FORCE)
+            set (CMAKE_OSX_ARCHITECTURES "x86_64;arm64" CACHE STRING "" FORCE)
         endif ()
     endif ()
     add_definitions (-DACExtension)
@@ -99,110 +103,64 @@ function (LinkGSLibrariesToProject target acVersion devKitDir)
 
 endfunction ()
 
-function (GenerateAddOnProject target acVersion devKitDir addOnName addOnSourcesFolder addOnResourcesFolder addOnLanguage)
-
-    find_package (Python COMPONENTS Interpreter)
-
-    set (ResourceObjectsDir ${CMAKE_BINARY_DIR}/ResourceObjects)
-    set (ResourceStampFile "${ResourceObjectsDir}/AddOnResources.stamp")
-
-    file (GLOB AddOnImageFiles CONFIGURE_DEPENDS
-        ${addOnResourcesFolder}/RFIX/Images/*.svg
-    )
-    if (WIN32)
-        file (GLOB AddOnResourceFiles CONFIGURE_DEPENDS
-            ${addOnResourcesFolder}/R${addOnLanguage}/*.grc
-            ${addOnResourcesFolder}/RFIX/*.grc
-            ${addOnResourcesFolder}/RFIX.win/*.rc2
-            ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/*.py
-        )
-    else ()
-        file (GLOB AddOnResourceFiles CONFIGURE_DEPENDS
-            ${addOnResourcesFolder}/R${addOnLanguage}/*.grc
-            ${addOnResourcesFolder}/RFIX/*.grc
-            ${addOnResourcesFolder}/RFIX.mac/*.plist
-            ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/*.py
-        )
+function (add_addon target)
+    cmake_parse_arguments(PARSE_ARGV 1 arg "" "NAME;DEV_KIT_DIR;AC_VERSION" "")
+    if (arg_UNPARSED_ARGUMENTS)
+        message (FATAL_ERROR "Unparsed arguments: ${arg_UNPARSED_ARGUMENTS}")
     endif ()
 
-    get_filename_component (AddOnSourcesFolderAbsolute "${CMAKE_CURRENT_LIST_DIR}/${addOnSourcesFolder}" ABSOLUTE)
-    get_filename_component (AddOnResourcesFolderAbsolute "${CMAKE_CURRENT_LIST_DIR}/${addOnResourcesFolder}" ABSOLUTE)
-    if (WIN32)
-        add_custom_command (
-            OUTPUT ${ResourceStampFile}
-            DEPENDS ${AddOnResourceFiles} ${AddOnImageFiles}
-            COMMENT "Compiling resources..."
-            COMMAND ${CMAKE_COMMAND} -E make_directory "${ResourceObjectsDir}"
-            COMMAND ${Python_EXECUTABLE} "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/CompileResources.py" "${addOnLanguage}" "${devKitDir}" "${AddOnSourcesFolderAbsolute}" "${AddOnResourcesFolderAbsolute}" "${ResourceObjectsDir}" "${ResourceObjectsDir}/${addOnName}.res"
-            COMMAND ${CMAKE_COMMAND} -E touch ${ResourceStampFile}
-        )
-    else ()
-        add_custom_command (
-            OUTPUT ${ResourceStampFile}
-            DEPENDS ${AddOnResourceFiles} ${AddOnImageFiles}
-            COMMENT "Compiling resources..."
-            COMMAND ${CMAKE_COMMAND} -E make_directory "${ResourceObjectsDir}"
-            COMMAND ${Python_EXECUTABLE} "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/CompileResources.py" "${addOnLanguage}" "${devKitDir}" "${AddOnSourcesFolderAbsolute}" "${AddOnResourcesFolderAbsolute}" "${ResourceObjectsDir}" "${CMAKE_BINARY_DIR}/$<CONFIG>/${addOnName}.bundle/Contents/Resources"
-            COMMAND ${CMAKE_COMMAND} -E copy "${devKitDir}/Inc/PkgInfo" "${CMAKE_BINARY_DIR}/$<CONFIG>/${addOnName}.bundle/Contents/PkgInfo"
-            COMMAND ${CMAKE_COMMAND} -E touch ${ResourceStampFile}
-        )
+    if (NOT arg_NAME)
+        message (FATAL_ERROR "Missing required argument: NAME")
     endif ()
 
-    file (GLOB_RECURSE AddOnHeaderFiles CONFIGURE_DEPENDS
-        ${addOnSourcesFolder}/*.h
-        ${addOnSourcesFolder}/*.hpp
-    )
-    file (GLOB_RECURSE AddOnSourceFiles CONFIGURE_DEPENDS
-        ${addOnSourcesFolder}/*.c
-        ${addOnSourcesFolder}/*.cpp
-    )
-    set (
-        AddOnFiles
-        ${AddOnHeaderFiles}
-        ${AddOnSourceFiles}
-        ${AddOnImageFiles}
-        ${AddOnResourceFiles}
-        ${ResourceStampFile}
-    )
-
-    source_group ("Sources" FILES ${AddOnHeaderFiles} ${AddOnSourceFiles})
-    source_group ("Images" FILES ${AddOnImageFiles})
-    source_group ("Resources" FILES ${AddOnResourceFiles})
-    if (WIN32)
-        add_library (${target} SHARED ${AddOnFiles})
-    else ()
-        add_library (${target} MODULE ${AddOnFiles})
+    if (NOT arg_DEV_KIT_DIR)
+        message (FATAL_ERROR "Missing required argument: DEV_KIT_DIR")
     endif ()
 
-    set_target_properties (${target} PROPERTIES OUTPUT_NAME ${addOnName})
+    if (NOT arg_AC_VERSION)
+        message (FATAL_ERROR "Missing required argument: AC_VERSION")
+    endif ()
+
+    # Create target
+    if (WIN32)
+        add_library (${target} SHARED)
+    else ()
+        add_library (${target} MODULE)
+    endif ()
+
+    # Set add-on properties on target
+    set_target_properties (${target} PROPERTIES
+        OUTPUT_NAME ${arg_NAME}
+        DEV_KIT_DIR ${arg_DEV_KIT_DIR}
+    )
     if (WIN32)
         set_target_properties (${target} PROPERTIES SUFFIX ".apx")
         set_target_properties (${target} PROPERTIES RUNTIME_OUTPUT_DIRECTORY_$<CONFIG> "${CMAKE_BINARY_DIR}/$<CONFIG>")
-        target_link_options (${target} PUBLIC "${ResourceObjectsDir}/${addOnName}.res")
+        target_link_options (${target} PUBLIC "${ResourceObjectsDir}/${arg_NAME}.res")
         target_link_options (${target} PUBLIC /export:GetExportedFuncAddrs,@1 /export:SetImportedFuncAddrs,@2)
     else ()
         # Prepare various variables for the Info.plist
-        string(TOLOWER "${addOnName}" lowerAddOnName)
+        string(TOLOWER "${arg_NAME}" lowerAddOnName)
         string(REGEX REPLACE "[ _]" "-" addOnNameIdentifier "${lowerAddOnName}")
         string(TIMESTAMP copyright "Copyright © GRAPHISOFT SE, 1984-%Y")
         # BE on the safe side; load the info from an existing framework
-        file(READ "${devKitDir}/Frameworks/GSRoot.framework/Versions/A/Resources/Info.plist" plist_content NEWLINE_CONSUME)
+        file(READ "${arg_DEV_KIT_DIR}/Frameworks/GSRoot.framework/Versions/A/Resources/Info.plist" plist_content NEWLINE_CONSUME)
         string(REGEX REPLACE ".*GSBuildNum[^0-9]+([0-9]+).*" "\\1" gsBuildNum "${plist_content}")
         string(REGEX REPLACE ".*LSMinimumSystemVersion[^0-9]+([0-9\.]+).*" "\\1" lsMinimumSystemVersion "${plist_content}")
 
-        set(MACOSX_BUNDLE_EXECUTABLE_NAME ${addOnName})
-        set(MACOSX_BUNDLE_INFO_STRING ${addOnName})
+        set(MACOSX_BUNDLE_EXECUTABLE_NAME ${arg_NAME})
+        set(MACOSX_BUNDLE_INFO_STRING ${arg_NAME})
         set(MACOSX_BUNDLE_GUI_IDENTIFIER com.graphisoft.${addOnNameIdentifier})
         set(MACOSX_BUNDLE_LONG_VERSION_STRING ${copyright})
-        set(MACOSX_BUNDLE_BUNDLE_NAME ${addOnName})
-        set(MACOSX_BUNDLE_SHORT_VERSION_STRING ${acVersion}.0.0.${gsBuildNum})
-        set(MACOSX_BUNDLE_BUNDLE_VERSION ${acVersion}.0.0.${gsBuildNum})
+        set(MACOSX_BUNDLE_BUNDLE_NAME ${arg_NAME})
+        set(MACOSX_BUNDLE_SHORT_VERSION_STRING ${arg_AC_VERSION}.0.0.${gsBuildNum})
+        set(MACOSX_BUNDLE_BUNDLE_VERSION ${arg_AC_VERSION}.0.0.${gsBuildNum})
         set(MACOSX_BUNDLE_COPYRIGHT ${copyright})
         set(MINIMUM_SYSTEM_VERSION "${lsMinimumSystemVersion}")
 
         # Configure the Info.plist file
         configure_file(
-            "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/AddOnInfo.plist.in"
+            "${CMAKE_TOOLS_DIR}/AddOnInfo.plist.in"
             "${CMAKE_BINARY_DIR}/AddOnInfo.plist"
             @ONLY
         )
@@ -218,12 +176,11 @@ function (GenerateAddOnProject target acVersion devKitDir addOnName addOnSources
         )
     endif ()
 
-    target_include_directories (${target} SYSTEM PUBLIC ${devKitDir}/Inc)
-    target_include_directories (${target} PUBLIC ${addOnSourcesFolder})
+    target_include_directories (${target} SYSTEM PUBLIC ${arg_DEV_KIT_DIR}/Inc)
 
     # use GSRoot custom allocators consistently in the Add-On
-    get_filename_component(new_hpp "${devKitDir}/Modules/GSRoot/GSNew.hpp" REALPATH)
-    get_filename_component(malloc_hpp "${devKitDir}/Modules/GSRoot/GSMalloc.hpp" REALPATH)
+    get_filename_component(new_hpp "${arg_DEV_KIT_DIR}/Modules/GSRoot/GSNew.hpp" REALPATH)
+    get_filename_component(malloc_hpp "${arg_DEV_KIT_DIR}/Modules/GSRoot/GSMalloc.hpp" REALPATH)
     if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
         target_compile_options(
             "${target}" PRIVATE
@@ -240,9 +197,196 @@ function (GenerateAddOnProject target acVersion devKitDir addOnName addOnSources
         message(FATAL_ERROR "Unknown compiler ID. Please open an issue at https://github.com/GRAPHISOFT/archicad-addon-cmake-tools")
     endif()
 
+    LinkGSLibrariesToProject (${target} ${arg_AC_VERSION} ${arg_DEV_KIT_DIR})
+
+    SetCompilerOptions (${target} ${arg_AC_VERSION})
+endfunction ()
+
+function (target_addon_resources target)
+    cmake_parse_arguments(PARSE_ARGV 1 arg "" "RESOURCE_ROOT_DIR;SOURCES_ROOT_DIR;LANGUAGE_CODE;CONFIG_FILE" "")
+    if (arg_UNPARSED_ARGUMENTS)
+        message (FATAL_ERROR "Unparsed arguments: ${arg_UNPARSED_ARGUMENTS}")
+    endif ()
+
+    if (NOT arg_CONFIG_FILE)
+        set (arg_CONFIG_FILE ${CMAKE_SOURCE_DIR}/config.json)
+    endif ()
+
+    if (NOT arg_LANGUAGE_CODE)
+        # Read default language from config.json
+        file (READ ${arg_CONFIG_FILE} configs_content)
+        string (JSON AC_ADDON_DEFAULT_LANGUAGE GET "${configs_content}" "defaultLanguage")
+        if ("${AC_ADDON_DEFAULT_LANGUAGE}" STREQUAL "")
+            message (FATAL_ERROR "Default language is not set in ${arg_CONFIG_FILE}")
+        endif ()
+        set (arg_LANGUAGE_CODE ${AC_ADDON_DEFAULT_LANGUAGE})
+        message (STATUS "Using detected language: ${arg_LANGUAGE_CODE}")
+    else ()
+        check_valid_language_code (${arg_CONFIG_FILE} ${arg_LANGUAGE_CODE})
+    endif ()
+
+    if (NOT arg_RESOURCE_ROOT_DIR)
+        set (arg_RESOURCE_ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR})
+    elseif ("${arg_RESOURCE_ROOT_DIR}" STREQUAL "")
+        message (FATAL_ERROR "Supplied RESOURCE_ROOT_DIR argument is empty")
+    endif ()
+
+    cmake_path (ABSOLUTE_PATH arg_RESOURCE_ROOT_DIR NORMALIZE)
+
+    if (NOT TARGET ${target})
+        message (FATAL_ERROR "Target ${target} has not beed created yet. Call add_addon (${target}) before calling this fucntion.")
+    endif ()
+
+    get_target_property (output_name ${target} OUTPUT_NAME)
+    if ("${output_name}" STREQUAL "")
+        message (FATAL_ERROR "Target ${target} is missing the OUTPUT_NAME property. This is required for resource compilation.")
+    endif ()
+    get_target_property (det_kit_dir ${target} DEV_KIT_DIR)
+    if ("${det_kit_dir}" STREQUAL "")
+        message (FATAL_ERROR "Target ${target} is missing the DEV_KIT_DIR property. This is required for resource compilation.")
+    endif ()
+
+    find_package (Python COMPONENTS Interpreter)
+
+    # Setup resource compilation outputs
+    set (ResourceObjectsDir ${CMAKE_BINARY_DIR}/ResourceObjects)
+    set (ResourceStampFile "${ResourceObjectsDir}/AddOnResources.stamp")
+
+    # Locate resources and add build dependencies
+    file (GLOB AddOnImageFiles CONFIGURE_DEPENDS
+        ${arg_RESOURCE_ROOT_DIR}/RFIX/Images/*.svg
+    )
+    if (WIN32)
+        file (GLOB AddOnResourceFiles CONFIGURE_DEPENDS
+            ${arg_RESOURCE_ROOT_DIR}/R${arg_LANGUAGE_CODE}/*.grc
+            ${arg_RESOURCE_ROOT_DIR}/RFIX/*.grc
+            ${arg_RESOURCE_ROOT_DIR}/RFIX.win/*.rc2
+        )
+    else ()
+        file (GLOB AddOnResourceFiles CONFIGURE_DEPENDS
+            ${arg_RESOURCE_ROOT_DIR}/R${arg_LANGUAGE_CODE}/*.grc
+            ${arg_RESOURCE_ROOT_DIR}/RFIX/*.grc
+            ${arg_RESOURCE_ROOT_DIR}/RFIX.mac/*.plist
+        )
+    endif ()
+
+    if ("${arg_SOURCES_ROOT_DIR}" STREQUAL "" OR NOT EXISTS "${arg_SOURCES_ROOT_DIR}")
+        # Sources can reside in multiple different folders, so there's no 1 folder this can resolve to. The exception is probably the parent
+        # "project" folder which is at least a good guess for a source folder.
+        set (arg_SOURCES_ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR})
+    else ()
+        cmake_path (ABSOLUTE_PATH arg_SOURCES_ROOT_DIR NORMALIZE)
+    endif ()
+
+    if (WIN32)
+        add_custom_command (
+            OUTPUT ${ResourceStampFile}
+            DEPENDS ${AddOnResourceFiles} ${AddOnImageFiles}
+            COMMENT "Compiling resources..."
+            COMMAND ${CMAKE_COMMAND} -E make_directory "${ResourceObjectsDir}"
+            COMMAND ${Python_EXECUTABLE} "${CMAKE_TOOLS_DIR}/CompileResources.py" "${arg_LANGUAGE_CODE}" "${det_kit_dir}" "${arg_SOURCES_ROOT_DIR}" "${arg_RESOURCE_ROOT_DIR}" "${ResourceObjectsDir}" "${ResourceObjectsDir}/${output_name}.res"
+            COMMAND ${CMAKE_COMMAND} -E touch ${ResourceStampFile}
+        )
+    else ()
+        add_custom_command (
+            OUTPUT ${ResourceStampFile}
+            DEPENDS ${AddOnResourceFiles} ${AddOnImageFiles}
+            COMMENT "Compiling resources..."
+            COMMAND ${CMAKE_COMMAND} -E make_directory "${ResourceObjectsDir}"
+            COMMAND ${Python_EXECUTABLE} "${CMAKE_TOOLS_DIR}/CompileResources.py" "${arg_LANGUAGE_CODE}" "${det_kit_dir}" "${arg_SOURCES_ROOT_DIR}" "${arg_RESOURCE_ROOT_DIR}" "${ResourceObjectsDir}" "${CMAKE_BINARY_DIR}/$<CONFIG>/${output_name}.bundle/Contents/Resources"
+            COMMAND ${CMAKE_COMMAND} -E copy "${det_kit_dir}/Inc/PkgInfo" "${CMAKE_BINARY_DIR}/$<CONFIG>/${output_name}.bundle/Contents/PkgInfo"
+            COMMAND ${CMAKE_COMMAND} -E touch ${ResourceStampFile}
+        )
+    endif ()
+
+    target_sources (${target} PRIVATE
+        ${AddOnImageFiles}
+        ${AddOnResourceFiles}
+        ${ResourceStampFile}
+    )
+
+    # Set IDE (generator) options
+    source_group ("Images" FILES ${AddOnImageFiles})
+    source_group ("Resources" FILES ${AddOnResourceFiles})
+endfunction ()
+
+function (GenerateAddOnProject target acVersion devKitDir addOnName addOnSourcesFolder addOnResourcesFolder addOnLanguage)
+
+    add_addon (${target}
+        NAME ${addOnName}
+        DEV_KIT_DIR ${devKitDir}
+        AC_VERSION ${acVersion}
+    )
+
+    target_addon_resources (${target}
+        NAME ${addOnName}
+        DEV_KIT_DIR ${devKitDir}
+        RESOURCE_ROOT_DIR ${addOnResourcesFolder}
+        SOURCES_ROOT_DIR ${addOnSourcesFolder}
+        LANGUAGE_CODE ${addOnLanguage}
+        CONFIG_FILE ${CMAKE_SOURCE_DIR}/config.json
+    )
+
+    file (GLOB_RECURSE AddOnHeaderFiles CONFIGURE_DEPENDS
+        ${addOnSourcesFolder}/*.h
+        ${addOnSourcesFolder}/*.hpp
+    )
+    file (GLOB_RECURSE AddOnSourceFiles CONFIGURE_DEPENDS
+        ${addOnSourcesFolder}/*.c
+        ${addOnSourcesFolder}/*.cpp
+    )
+
+    source_group ("Sources" FILES ${AddOnHeaderFiles} ${AddOnSourceFiles})
+
+    target_sources (${target} PRIVATE
+        ${AddOnHeaderFiles}
+        ${AddOnSourceFiles}
+    )
+
+    target_include_directories (${target} PUBLIC ${addOnSourcesFolder})
+
     LinkGSLibrariesToProject (${target} ${acVersion} ${devKitDir})
 
     set_source_files_properties (${AddOnSourceFiles} PROPERTIES LANGUAGE CXX)
-    SetCompilerOptions (${target} ${acVersion})
+endfunction ()
 
+function (check_valid_language_code configFile languageCode)
+    file (READ ${configFile} configsContent)
+    string (JSON configuredLanguagesList GET "${configsContent}" "languages")
+    string (JSON configuredLanguagesListLen LENGTH "${configsContent}" "languages")
+    set (i 0)
+    while (${i} LESS ${configuredLanguagesListLen})
+        string (JSON language GET "${configuredLanguagesList}" ${i})
+        if (${language} STREQUAL ${languageCode})
+            return ()
+        endif ()
+        math (EXPR i "${i} + 1")
+    endwhile()
+
+    message (FATAL_ERROR "Language code ${languageCode} is not part of the configured languages in ${configFile}")
+endfunction ()
+
+function (verify_api_devkit_folder devKitPath)
+    if (NOT EXISTS ${devKitPath})
+        message (FATAL_ERROR "The supplied API DevKit path ${devKitPath} does not exist")
+    endif ()
+
+    cmake_path (GET devKitPath FILENAME currentFolderName)
+    if (NOT "${currentFolderName}" STREQUAL "Support")
+        message (FATAL_ERROR "The supplied API DevKit path should point to the /Support subfolder of the API DevKit. Actual path: ${devKitPath}")
+    endif ()
+
+    if (NOT EXISTS "${devKitPath}/Lib")
+        message (FATAL_ERROR "${devKitPath}/Lib does not exist")
+    endif ()
+
+    if (NOT EXISTS "${devKitPath}/Modules")
+        message (FATAL_ERROR "${devKitPath}/Modules does not exist")
+    endif ()
+
+    if (NOT WIN32)
+        if (NOT EXISTS "${devKitPath}/Frameworks")
+            message (FATAL_ERROR "${devKitPath}/Frameworks does not exist")
+        endif ()
+    endif ()
 endfunction ()
