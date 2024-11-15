@@ -345,8 +345,6 @@ function (GenerateAddOnProject target acVersion devKitDir addOnName addOnSources
 
     target_include_directories (${target} PUBLIC ${addOnSourcesFolder})
 
-    LinkGSLibrariesToProject (${target} ${acVersion} ${devKitDir})
-
     set_source_files_properties (${AddOnSourceFiles} PROPERTIES LANGUAGE CXX)
 endfunction ()
 
@@ -363,7 +361,7 @@ function (check_valid_language_code configFile languageCode)
         math (EXPR i "${i} + 1")
     endwhile()
 
-    message (FATAL_ERROR "Language code ${languageCode} is not part of the configured languages in ${configFile}")
+    message (FATAL_ERROR "Language code ${languageCode} is not part of the configured languages in ${configFile}.")
 endfunction ()
 
 function (verify_api_devkit_folder devKitPath)
