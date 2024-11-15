@@ -134,10 +134,14 @@ function (add_addon target)
         DEV_KIT_DIR ${arg_DEV_KIT_DIR}
     )
     if (WIN32)
-        set_target_properties (${target} PROPERTIES SUFFIX ".apx")
-        set_target_properties (${target} PROPERTIES RUNTIME_OUTPUT_DIRECTORY_$<CONFIG> "${CMAKE_BINARY_DIR}/$<CONFIG>")
-        target_link_options (${target} PUBLIC "${ResourceObjectsDir}/${arg_NAME}.res")
-        target_link_options (${target} PUBLIC /export:GetExportedFuncAddrs,@1 /export:SetImportedFuncAddrs,@2)
+        set_target_properties (${target} PROPERTIES
+            SUFFIX ".apx"
+            RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
+        )
+        target_link_options (${target}
+            PUBLIC "${ResourceObjectsDir}/${arg_NAME}.res"
+            PUBLIC /export:GetExportedFuncAddrs,@1 /export:SetImportedFuncAddrs,@2
+        )
     else ()
         # Prepare various variables for the Info.plist
         string(TOLOWER "${arg_NAME}" lowerAddOnName)
