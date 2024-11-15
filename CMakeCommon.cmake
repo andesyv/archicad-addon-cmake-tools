@@ -324,7 +324,6 @@ function (GenerateAddOnProject target acVersion devKitDir addOnName addOnSources
         RESOURCE_ROOT_DIR ${addOnResourcesFolder}
         SOURCES_ROOT_DIR ${addOnSourcesFolder}
         LANGUAGE_CODE ${addOnLanguage}
-        CONFIG_FILE ${CMAKE_SOURCE_DIR}/config.json
     )
 
     file (GLOB_RECURSE AddOnHeaderFiles CONFIGURE_DEPENDS
